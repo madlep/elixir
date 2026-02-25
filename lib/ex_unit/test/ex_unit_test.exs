@@ -1087,6 +1087,136 @@ defmodule ExUnitTest do
     end
   end
 
+  describe ":repeat" do
+    test "warns when both repeat and repeat_until_failure are set" do
+      defmodule RepeatAndRepeatUntilFailureTest do
+        use ExUnit.Case
+
+        test "a test", do: assert(true)
+      end
+
+      configure_and_reload_on_exit(repeat: 5, repeat_until_failure: 3)
+
+      # double capture_io so we don't pollute test output with noise from stdout
+      output =
+        capture_io(fn ->
+          stderr_output =
+            capture_io(:stderr, fn ->
+              assert ExUnit.run() == %{total: 1, failures: 0, excluded: 0, skipped: 0}
+            end)
+
+          assert stderr_output =~
+                   "repeat_until_failure and repeat can't be combined. Ignoring repeat_until_failure"
+        end)
+
+      runs = String.split(output, "Running ExUnit", trim: true)
+      # default to using :repeat option
+      # 6 runs in total, 5 repeats
+      assert length(runs) == 6
+    end
+
+    test "defaults to 0" do
+      configure_and_reload_on_exit([])
+      ExUnit.start(autorun: false)
+      config = ExUnit.configuration()
+      assert config[:repeat] == 0
+    end
+
+    test "sets value of :repeat" do
+      configure_and_reload_on_exit([])
+      ExUnit.start(repeat: 5, autorun: false)
+      config = ExUnit.configuration()
+      assert config[:repeat] == 5
+    end
+
+    test "repeats tests up to the configured number of times" do
+      defmodule TestRepeat do
+        use ExUnit.Case
+
+        @tag :skip
+        test "skipped #{__ENV__.line}", do: assert(false)
+
+        test __ENV__.line, do: assert(true)
+        test __ENV__.line, do: assert(true)
+        test __ENV__.line, do: assert(true)
+
+        @tag :exclude
+        test "excluded #{__ENV__.line}", do: assert(false)
+      end
+
+      configure_and_reload_on_exit(repeat: 5)
+
+      output =
+        capture_io(fn ->
+          assert ExUnit.run() == %{total: 5, failures: 0, skipped: 1, excluded: 1}
+        end)
+
+      runs = String.split(output, "Running ExUnit", trim: true)
+      # 6 runs in total, 5 repeats
+      assert length(runs) == 6
+    end
+
+    test "repeats tests up to the configured number of times with groups" do
+      defmodule TestGroupedRepeat do
+        use ExUnit.Case, async: true, group: :example
+        test __ENV__.line, do: assert(true)
+      end
+
+      configure_and_reload_on_exit(repeat: 5)
+
+      output =
+        capture_io(fn ->
+          assert ExUnit.run() == %{total: 1, failures: 0, skipped: 0, excluded: 0}
+        end)
+
+      runs = String.split(output, "Running ExUnit", trim: true)
+      # 6 runs in total, 5 repeats
+      assert length(runs) == 6
+    end
+
+    test "continues on failure" do
+      {:ok, pid} = Agent.start_link(fn -> 0 end)
+      Process.register(pid, :ex_unit_repeat_count)
+
+      defmodule TestRepeatWithFailure do
+        use ExUnit.Case
+
+        @tag :skip
+        test "skipped #{__ENV__.line}", do: assert(true)
+
+        test "maybe pass #{__ENV__.line}" do
+          count = Agent.get(:ex_unit_repeat_count, & &1)
+
+          if count < 3 do
+            Agent.update(:ex_unit_repeat_count, &(&1 + 1))
+            assert(true)
+          else
+            assert(false)
+          end
+        end
+
+        @tag :exclude
+        test "excluded #{__ENV__.line}", do: assert(true)
+
+        @tag :exclude
+        test "excluded #{__ENV__.line}", do: assert(false)
+      end
+
+      configure_and_reload_on_exit(repeat: 5)
+
+      output =
+        capture_io(fn ->
+          assert ExUnit.run() == %{total: 4, excluded: 2, failures: 1, skipped: 1}
+        end)
+
+      runs = String.split(output, "Running ExUnit", trim: true)
+      # six runs in total, the first two repeats work fine, the third repeat (4th run)
+      # fails, but we continue regardless
+      assert length(runs) == 6
+      assert List.last(runs) =~ "Expected truthy, got false"
+    end
+  end
+
   test "prints warning when all tests are excluded" do
     defmodule OnlyExcludedTests do
       use ExUnit.Case

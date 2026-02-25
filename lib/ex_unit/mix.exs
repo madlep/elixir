@@ -40,6 +40,7 @@ defmodule ExUnit.MixProject do
         trace: false,
         after_suite: [],
         repeat_until_failure: 0,
+        repeat: 0,
         dry_run: false
       ]
     ]

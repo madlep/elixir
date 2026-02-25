@@ -48,7 +48,8 @@ defmodule ExUnit.Runner do
     EM.suite_started(config.manager, opts)
 
     modules_to_restore =
-      if Keyword.fetch!(opts, :repeat_until_failure) > 0, do: {[], []}, else: nil
+      if Keyword.fetch!(opts, :repeat_until_failure) > 0 || Keyword.fetch!(opts, :repeat) > 0,
+        do: {[], []}
 
     {async_stop_time, modules_to_restore} = async_loop(config, %{}, false, modules_to_restore)
     stop_time = System.monotonic_time()

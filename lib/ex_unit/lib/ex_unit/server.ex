@@ -48,8 +48,8 @@ defmodule ExUnit.Server do
     GenServer.call(@name, :take_sync_modules, @timeout)
   end
 
-  def restore_modules(async_modules, sync_modules) do
-    GenServer.call(@name, {:restore_modules, async_modules, sync_modules}, @timeout)
+  def restore_modules(modules_to_restore) do
+    GenServer.call(@name, {:restore_modules, modules_to_restore}, @timeout)
   end
 
   ## Callbacks
@@ -84,7 +84,12 @@ defmodule ExUnit.Server do
   end
 
   # Called by the runner when --repeat-until-failure is used.
-  def handle_call({:restore_modules, async_modules, sync_modules}, _from, state) do
+  def handle_call({:restore_modules, nil}, _from, state) do
+    # no-op if not handling :repeat or :repeat_until_failure
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:restore_modules, {async_modules, sync_modules}}, _from, state) do
     {async_modules, async_groups, groups} =
       Enum.reduce(async_modules, {[], [], []}, fn
         {nil, [module]}, {async_modules, async_groups, groups} ->

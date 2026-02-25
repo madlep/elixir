@@ -550,29 +550,54 @@ defmodule ExUnit do
   end
 
   defp maybe_repeated_run(options, seed, load_us) do
-    repeat = Keyword.fetch!(options, :repeat_until_failure)
+    repeat = repeat_opts(options)
     maybe_repeated_run(options, seed, load_us, repeat)
   end
 
   defp maybe_repeated_run(options, seed, load_us, repeat) do
-    case ExUnit.Runner.run(options, load_us) do
-      {%{failures: 0}, {async_modules, sync_modules}}
-      when repeat > 0 and (sync_modules != [] or async_modules != []) ->
-        ExUnit.Server.restore_modules(async_modules, sync_modules)
+    {stats, modules_to_restore} = ExUnit.Runner.run(options, load_us)
 
-        # Clear the seed if it was generated
-        if seed == nil do
-          Application.delete_env(:ex_unit, :seed)
-        end
+    if new_repeat = decr_repeat(repeat, stats) do
+      ExUnit.Server.restore_modules(modules_to_restore)
 
-        # Re-run configuration
-        options = persist_defaults(configuration())
-        maybe_repeated_run(options, seed, load_us, repeat - 1)
+      # Clear the seed if it was generated
+      if seed == nil do
+        Application.delete_env(:ex_unit, :seed)
+      end
 
-      {stats, _} ->
-        stats
+      # Re-run configuration
+      options = persist_defaults(configuration())
+
+      maybe_repeated_run(options, seed, load_us, new_repeat)
+    else
+      stats
     end
   end
+
+  defp repeat_opts(options) do
+    repeat = Keyword.fetch!(options, :repeat)
+    repeat_until_failure = Keyword.fetch!(options, :repeat_until_failure)
+
+    if repeat > 0 && repeat_until_failure > 0 do
+      IO.warn("repeat_until_failure and repeat can't be combined. Ignoring repeat_until_failure")
+    end
+
+    cond do
+      repeat > 0 -> {:repeat, repeat}
+      repeat_until_failure > 0 -> {:repeat_until_failure, repeat_until_failure}
+      true -> :no_repeat
+    end
+  end
+
+  # repeat regardless of failures if :repeat has more left
+  defp decr_repeat({:repeat, reps}, _stats) when reps > 0, do: {:repeat, reps - 1}
+
+  # repeat if no failures, and :repeat_until_failure has more left
+  defp decr_repeat({:repeat_until_failure, reps}, %{failures: 0}) when reps > 0,
+    do: {:repeat_until_failure, reps - 1}
+
+  # otherwise don't repeat
+  defp decr_repeat(_stats, _repeat), do: nil
 
   defp put_seed(opts) do
     Keyword.put_new_lazy(opts, :seed, fn ->
