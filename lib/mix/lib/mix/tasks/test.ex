@@ -192,6 +192,13 @@ defmodule Mix.Tasks.Test do
     * `--raise` - immediately raises if the test suite fails, instead of continuing
       the execution of other Mix tasks
 
+    * `--repeat` - sets the number of repetitions for running the suite. This
+      is similiar to `--repeat-until-failure`, but continues re-running the test
+      suite even when failures are encountered. This is also useful for debugging
+      flaky tests, especially when combined with a custom `--formatter` module to
+      generate additional information about test failures over a longer test suite
+      run.
+
     * `--repeat-until-failure` *(since v1.17.0)* - sets the number of repetitions for running
       the suite until it fails. This is useful for debugging flaky tests within the same instance
       of the Erlang VM. For example, `--repeat-until-failure 10000` repeats the test suite
@@ -520,6 +527,7 @@ defmodule Mix.Tasks.Test do
     profile_require: :string,
     exit_status: :integer,
     repeat_until_failure: :integer,
+    repeat: :integer,
     dry_run: :boolean
   ]
 
@@ -907,6 +915,7 @@ defmodule Mix.Tasks.Test do
     :test_location_relative_path,
     :exit_status,
     :repeat_until_failure,
+    :repeat,
     :dry_run
   ]
 
@@ -922,6 +931,7 @@ defmodule Mix.Tasks.Test do
       |> formatter_opts()
       |> color_opts()
       |> exit_status_opts()
+      |> repeat_opts()
       |> Keyword.take(@option_keys)
       |> default_opts()
 
@@ -1065,6 +1075,14 @@ defmodule Mix.Tasks.Test do
 
   defp exit_status_opts(opts) do
     Keyword.put_new(opts, :exit_status, 2)
+  end
+
+  defp repeat_opts(opts) do
+    if Keyword.has_key?(opts, :repeat_until_failure) && Keyword.has_key?(opts, :repeat) do
+      Mix.raise("Combining --repeat-until-failure and --repeat is not supported.")
+    else
+      opts
+    end
   end
 
   defp require_test_helper(shell, dir) do

@@ -804,6 +804,73 @@ defmodule Mix.Tasks.TestTest do
     end
   end
 
+  describe "--repeat-until-failure" do
+    test "repeats failing test suite once" do
+      in_fixture("test_failed", fn ->
+        output = mix(["test", "--repeat-until-failure", "5", "test/only_failing_test_failed.exs"])
+
+        runs =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.filter(&(&1 =~ ~r/^Running ExUnit/))
+
+        assert length(runs) == 1
+      end)
+    end
+
+    test "repeats passing test suite specified number of times" do
+      in_fixture("test_failed", fn ->
+        output = mix(["test", "--repeat-until-failure", "5", "test/only_passing_test_failed.exs"])
+
+        runs =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.filter(&(&1 =~ ~r/^Running ExUnit/))
+
+        # initial run + 5 more
+        assert length(runs) == 6
+      end)
+    end
+  end
+
+  describe "--repeat" do
+    test "can't be combined with --repeat-until-failure" do
+      in_fixture("test_failed", fn ->
+        {output, exit_status} = mix_code(["test", "--repeat", "5", "--repeat-until-failure", "6"])
+        assert output =~ "(Mix) Combining --repeat-until-failure and --repeat is not supported."
+        assert exit_status != 0
+      end)
+    end
+
+    test "repeats failing test suite specified number of times" do
+      in_fixture("test_failed", fn ->
+        output = mix(["test", "--repeat", "5", "test/only_failing_test_failed.exs"])
+
+        runs =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.filter(&(&1 =~ ~r/^Running ExUnit/))
+
+        # initial run + 5 more
+        assert length(runs) == 6
+      end)
+    end
+
+    test "repeats passing test suite specified number of times" do
+      in_fixture("test_failed", fn ->
+        output = mix(["test", "--repeat", "5", "test/only_passing_test_failed.exs"])
+
+        runs =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.filter(&(&1 =~ ~r/^Running ExUnit/))
+
+        # initial run + 5 more
+        assert length(runs) == 6
+      end)
+    end
+  end
+
   defp receive_until_match(port, expected, acc) do
     receive do
       {^port, {:data, output}} ->
